@@ -1,0 +1,38 @@
+# Django関連
+Django==4.2.22
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+django-environ==0.11.2
+channels==4.0.0
+daphne==4.0.0
+
+# データベース関連
+psycopg2-binary==2.9.9
+redis==5.0.1
+
+# 認証関連
+django-allauth==0.61.1
+djangorestframework-simplejwt==5.3.1
+
+# 非同期処理
+celery==5.3.6
+
+# AWS関連
+boto3==1.34.34
+
+# 開発ツール
+black==24.1.1
+flake8==7.0.0
+pytest==8.0.0
+pytest-django==4.8.0
+drf-yasg==1.21.7
+django-filter==23.5
+invoke==2.2.0
+
+# キャッシュ関連
+django-redis==5.4.0
+
+# パフォーマンス向上
+django-cachalot==2.5.1
+django-extensions==3.2.3
+django-debug-toolbar==4.2.0 
