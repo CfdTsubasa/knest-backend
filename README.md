@@ -1,110 +1,110 @@
-# Knest Backend API
+# Knest Backend
 
-## 📖 概要
-Knestは趣味・興味関心に基づいたサークル発見・参加プラットフォームのバックエンドAPIです。
+Knestは、興味や感情を共有し、AIによるサポートを受けられるソーシャルプラットフォームのバックエンドAPIです。
 
-## 🚀 技術スタック
-- **Backend**: Django 4.2.22 + Django REST Framework
-- **Database**: SQLite (開発環境) / PostgreSQL (本番環境)
-- **Cache**: Django DummyCache (開発環境) / Redis (本番環境)
-- **Authentication**: JWT Token認証
-- **API Documentation**: drf-yasg (Swagger)
+## 機能概要
 
-## 🎯 主要機能
-- **ユーザー認証・管理**: JWT認証、ユーザープロフィール
-- **サークル管理**: 作成、参加、退会、検索、推薦
-- **チャット機能**: リアルタイムチャット、メッセージ履歴
-- **興味関心システム**: 3階層（カテゴリ→サブカテゴリ→タグ）
-- **マッチングエンジン**: 興味・年齢・居住地による重み付けマッチング
+- ユーザー管理と認証
+- 興味・関心の管理
+- AIサポートセッション
+- サブスクリプション管理
+- メッセージングとリアクション
 
-## 🛠️ セットアップ
+詳細な機能については以下のドキュメントを参照してください：
+- [アプリケーション概要](docs/app_overview.md)
+- [APIエンドポイント一覧](docs/api_endpoints.md)
 
-### 前提条件
-- Python 3.9+
-- pip
+## 技術スタック
 
-### インストール
+- Python 3.9.6
+- Django 4.2.22
+- Django REST Framework 3.14.0
+- PostgreSQL（開発環境ではSQLite3）
+- Redis
+- Celery
+
+## 🚀 クイックスタート
+
+**最も簡単な開発環境の起動方法:**
+
 ```bash
-# リポジトリクローン
-git clone https://github.com/your-username/knest-backend.git
-cd knest-backend
+# 初回のみ
+make setup
 
-# 仮想環境作成・有効化
-python -m venv venv
-source venv/bin/activate  # macOS/Linux
-# venv\Scripts\activate  # Windows
-
-# 依存関係インストール
-pip install -r requirements.txt
-
-# データベースマイグレーション
-python manage.py makemigrations
-python manage.py migrate
-
-# スーパーユーザー作成
-python manage.py createsuperuser
-
-# サンプルデータ作成（オプション）
-python simple_testuser_setup.py
-python create_hierarchical_sample_data.py
-```
-
-### 起動
-```bash
 # 開発サーバー起動
-python manage.py runserver 8000
-
-# または Makeコマンド使用
 make dev
 ```
 
-## 📚 API エンドポイント
+詳細な開発環境セットアップ方法は **[開発環境セットアップガイド](docs/development_setup.md)** を参照してください。
 
-### 認証
-- `POST /api/users/auth/token/` - ログイン
-- `POST /api/users/auth/token/refresh/` - トークン更新
-- `GET /api/users/me/` - ユーザー情報取得
+## 従来の開発環境セットアップ
 
-### サークル
-- `GET /api/circles/` - サークル一覧
-- `POST /api/circles/` - サークル作成
-- `GET /api/circles/{id}/` - サークル詳細
-- `GET /api/circles/circles/my/` - 参加中サークル一覧
-- `POST /api/circles/{id}/join/` - サークル参加
+<details>
+<summary>従来の手動セットアップ方法（クリックして展開）</summary>
 
-### チャット
-- `GET /api/circles/chats/?circle={id}` - チャットメッセージ取得
-- `POST /api/circles/chats/` - メッセージ送信
-
-### 興味関心
-- `GET /api/interests/hierarchical/categories/` - カテゴリ一覧
-- `GET /api/interests/hierarchical/subcategories/` - サブカテゴリ一覧
-- `GET /api/interests/hierarchical/tags/` - タグ一覧
-
-## 🔧 開発ツール
-
-### Makeコマンド
+1. リポジトリのクローン
 ```bash
-make dev          # 開発サーバー起動
-make test         # テスト実行
-make lint         # コード品質チェック
-make migrate      # マイグレーション実行
-make shell        # Djangoシェル起動
+git clone https://github.com/your-username/knest-backend.git
+cd knest-backend
 ```
 
-### API文書
-- **Swagger UI**: http://localhost:8000/swagger/
-- **管理画面**: http://localhost:8000/admin/
+2. 仮想環境の作成と有効化
+```bash
+python -m venv venv
+source venv/bin/activate  # Unix系
+venv\Scripts\activate     # Windows
+```
 
-## 🌐 関連リポジトリ
-- **iOS アプリ**: [knest-ios-app](https://github.com/your-username/knest-ios-app)
-- **ドキュメント**: [knest-docs](https://github.com/your-username/knest-docs)
+3. 依存パッケージのインストール
+```bash
+pip install -r requirements.txt
+```
 
-## 📝 開発ガイド
-詳細な開発ガイドは `docs/development_session_2025-01-27.md` を参照してください。
+4. 環境変数の設定
+```bash
+cp .env.example .env
+# .envファイルを編集して必要な環境変数を設定
+```
 
-## 🤝 コントリビューション
-プルリクエストやIssueの作成を歓迎します。
+5. データベースのセットアップ
+```bash
+python manage.py migrate
+```
 
-## 📄 ライセンス
+6. 開発サーバーの起動
+```bash
+python manage.py runserver
+```
+
+</details>
+
+## テスト
+
+```bash
+# 全てのテストを実行
+make test
+# または
+python manage.py test
+
+# 特定のアプリケーションのテストを実行
+python manage.py test apps.interests
+```
+
+## API ドキュメント
+
+開発サーバー起動後、以下のURLでSwagger UIによるAPIドキュメントにアクセスできます：
+
+- Swagger UI: http://localhost:8000/swagger/
+- ReDoc: http://localhost:8000/redoc/
+
+## コントリビューション
+
+1. このリポジトリをフォーク
+2. 新しいブランチを作成 (`git checkout -b feature/amazing-feature`)
+3. 変更をコミット (`git commit -m 'Add some amazing feature'`)
+4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
+5. プルリクエストを作成
+
+## ライセンス
+
 このプロジェクトはMITライセンスの下で公開されています。 
