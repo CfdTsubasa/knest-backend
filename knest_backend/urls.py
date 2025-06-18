@@ -25,6 +25,7 @@ urlpatterns = [
     path('api/circles/', include('knest_backend.apps.circles.urls')),
     path('api/ai-support/', include('knest_backend.apps.ai_support.urls')),
     path('api/subscriptions/', include('knest_backend.apps.subscriptions.urls')),
+    path('api/v2/recommendations/', include('knest_backend.apps.recommendations.urls')),
     # Swagger URLs
     path('swagger<format>/', schema_view.without_ui(cache_timeout=0), name='schema-json'),
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),

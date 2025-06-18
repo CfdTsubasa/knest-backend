@@ -144,36 +144,67 @@ class InterestTag(models.Model):
 
 
 class UserInterestProfile(models.Model):
-    """ユーザーの興味関心プロフィール（強度付き）"""
-    INTENSITY_CHOICES = [
-        (1, '少し興味がある'),
-        (2, '興味がある'),
-        (3, 'かなり興味がある'),
-        (4, 'とても興味がある'),
-        (5, '非常に興味がある'),
+    """ユーザーの興味関心プロフィール（階層レベル選択可能）"""
+    LEVEL_CHOICES = [
+        (1, 'カテゴリレベル'),
+        (2, 'サブカテゴリレベル'),
+        (3, 'タグレベル'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='hierarchical_interests', verbose_name='ユーザー')
-    category = models.ForeignKey(InterestCategory, on_delete=models.CASCADE, null=True, blank=True, verbose_name='カテゴリ')
+    category = models.ForeignKey(InterestCategory, on_delete=models.CASCADE, verbose_name='カテゴリ')
     subcategory = models.ForeignKey(InterestSubcategory, on_delete=models.CASCADE, null=True, blank=True, verbose_name='サブカテゴリ')
-    tag = models.ForeignKey(InterestTag, on_delete=models.CASCADE, verbose_name='タグ')
-    intensity = models.IntegerField(choices=INTENSITY_CHOICES, default=3, verbose_name='強度')
+    tag = models.ForeignKey(InterestTag, on_delete=models.CASCADE, null=True, blank=True, verbose_name='タグ')
+    level = models.IntegerField(choices=LEVEL_CHOICES, default=3, verbose_name='選択レベル')
     added_at = models.DateTimeField(auto_now_add=True, verbose_name='追加日時')
     
     class Meta:
         db_table = 'user_interest_profiles'
         verbose_name = 'ユーザー興味関心プロフィール'
         verbose_name_plural = 'ユーザー興味関心プロフィール'
-        unique_together = ('user', 'tag')
-        ordering = ['-intensity', '-added_at']
+        ordering = ['-added_at']
+    
+    def clean(self):
+        """バリデーション: レベルに応じて必要フィールドをチェック"""
+        from django.core.exceptions import ValidationError
+        
+        if self.level == 1:  # カテゴリレベル
+            if not self.category:
+                raise ValidationError('カテゴリレベルの場合、カテゴリは必須です')
+        elif self.level == 2:  # サブカテゴリレベル
+            if not self.category or not self.subcategory:
+                raise ValidationError('サブカテゴリレベルの場合、カテゴリとサブカテゴリは必須です')
+        elif self.level == 3:  # タグレベル
+            if not self.category or not self.subcategory or not self.tag:
+                raise ValidationError('タグレベルの場合、全ての階層フィールドが必須です')
     
     def save(self, *args, **kwargs):
-        # tagの階層情報を自動設定
+        # レベルの自動判定
         if self.tag:
+            self.level = 3
             self.subcategory = self.tag.subcategory
             self.category = self.tag.subcategory.category
+        elif self.subcategory:
+            self.level = 2
+            self.category = self.subcategory.category
+        elif self.category:
+            self.level = 1
+        
+        # バリデーション実行
+        self.clean()
         super().save(*args, **kwargs)
     
+    @property
+    def display_name(self):
+        """表示用の名前を取得"""
+        if self.level == 3 and self.tag:
+            return self.tag.name
+        elif self.level == 2 and self.subcategory:
+            return self.subcategory.name
+        elif self.level == 1 and self.category:
+            return self.category.name
+        return "不明"
+    
     def __str__(self):
-        return f"{self.user.username} - {self.tag.name} (強度: {self.intensity})" 
+        return f"{self.user.username} - {self.display_name} (レベル{self.level})" 

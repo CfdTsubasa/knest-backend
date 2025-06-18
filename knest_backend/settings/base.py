@@ -17,7 +17,7 @@ SECRET_KEY = "django-insecure-6ey*l+h+hyf0vnpu2)b*0(a2!f5*wy(_iva+7+18y^8!l$l4_$
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['192.168.151.37', '127.0.0.1', 'localhost']
 
 # Application definition
 
@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "knest_backend.apps.subscriptions.apps.SubscriptionsConfig",
     "knest_backend.apps.reactions.apps.ReactionsConfig",
     "knest_backend.apps.chat_messages.apps.ChatMessagesConfig",
+    "knest_backend.apps.recommendations.apps.RecommendationsConfig",  # 推薦システム
 ]
 
 MIDDLEWARE = [
@@ -236,6 +237,11 @@ LOGGING = {
             'level': 'INFO',  # DEBUGからINFOに変更
             'propagate': False,
         },
+        'knest_backend.apps.recommendations': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
     },
 }
 
@@ -269,4 +275,16 @@ SIMPLE_JWT = {
     'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
     'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
     'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
+}
+
+# 次世代推薦システム設定
+USE_NEW_RECOMMENDATION_ENGINE = True  # 新推薦エンジンを有効化
+RECOMMENDATION_ENGINE_CONFIG = {
+    'CACHE_TIMEOUT': 3600,  # 1時間
+    'SIMILARITY_CACHE_TIMEOUT': 1800,  # 30分
+    'MAX_SIMILAR_USERS': 50,
+    'MIN_SIMILARITY_THRESHOLD': 0.3,
+    'DEFAULT_DIVERSITY_FACTOR': 0.3,
+    'ENABLE_BEHAVIORAL_TRACKING': True,
+    'ENABLE_LEARNING': True,
 } 

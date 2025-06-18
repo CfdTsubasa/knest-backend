@@ -81,47 +81,144 @@ class CircleViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def join(self, request, pk=None):
-        """サークルに参加"""
-        circle = self.get_object()
+        """サークルに参加または参加申請"""
+        print(f"\n🔍 =============== サークル参加リクエスト開始 ===============")
+        print(f"📱 フロントエンドから送信されたサークルID: '{pk}'")
+        print(f"👤 リクエストユーザー: {request.user}")
+        print(f"📊 リクエストデータ: {request.data}")
         
-        # 既に参加しているかチェック
-        if CircleMembership.objects.filter(
-            user=request.user,
-            circle=circle
-        ).exists():
+        # 現在データベースに存在する有効なサークルIDを取得
+        valid_circles = Circle.objects.all()[:10]  # 最初の10個を表示
+        print(f"\n💾 バックエンド（DB）に存在する有効なサークルID:")
+        for i, circle in enumerate(valid_circles, 1):
+            status_icon = "✅" if str(circle.id) == str(pk) else "❌"
+            print(f"   {i}. {status_icon} ID: {circle.id}")
+            print(f"      Name: {circle.name}")
+            print(f"      Status: {circle.status}, Type: {circle.circle_type}")
+        
+        print(f"\n🔍 ID一致チェック:")
+        print(f"   フロントエンド送信ID: '{pk}'")
+        
+        try:
+            circle = self.get_object()
+            print(f"   ✅ サークルが見つかりました!")
+            print(f"   📋 取得したサークル詳細:")
+            print(f"      ID: {circle.id}")
+            print(f"      Name: {circle.name}")
+            print(f"      Status: {circle.status}")
+            print(f"      Type: {circle.circle_type}")
+            print(f"      Member Count: {circle.member_count}")
+        except Exception as e:
+            print(f"   ❌ サークルが見つかりません!")
+            print(f"   ❌ エラー: {e}")
+            print(f"   ❌ このIDはデータベースに存在しません: '{pk}'")
+            print(f"\n💡 解決方法:")
+            print(f"   1. 上記の有効なIDのいずれかを使用してください")
+            print(f"   2. アプリのキャッシュをクリアしてください") 
+            print(f"   3. 新しいユーザーでログインしてください")
+            print(f"===============================================================\n")
+            raise
+        
+        # サークルステータスチェック
+        if circle.status != 'open':
+            print(f"❌ サークルが参加受付中ではありません: status={circle.status}")
             return Response(
-                {'detail': _('既にサークルに参加しています。')},
+                {'detail': _('現在このサークルは参加を受け付けていません。')},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # メンバー数上限チェック
-        if circle.member_count >= 10:
+        # 既に参加しているかチェック
+        existing_membership = CircleMembership.objects.filter(
+            user=request.user,
+            circle=circle
+        ).first()
+        
+        if existing_membership:
+            if existing_membership.status == 'active':
+                return Response(
+                    {'detail': _('既にサークルに参加しています。')},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            elif existing_membership.status == 'pending':
+                return Response(
+                    {'detail': _('既に参加申請中です。')},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # メンバー数上限チェック（実際のメンバー数を確認）
+        active_member_count = CircleMembership.objects.filter(
+            circle=circle,
+            status='active'
+        ).count()
+        
+        # member_limitが設定されている場合はそれを使用、なければデフォルト10
+        max_members = circle.member_limit if circle.member_limit else 10
+        
+        if active_member_count >= max_members:
             return Response(
                 {'detail': _('サークルのメンバー数が上限に達しています。')},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         # ユーザーの参加可能サークル数チェック
-        user_circles = CircleMembership.objects.filter(
-            user=request.user
+        user_active_circles = CircleMembership.objects.filter(
+            user=request.user,
+            status='active'
         ).count()
         max_circles = 4 if request.user.is_premium else 2
         
-        if user_circles >= max_circles:
+        if user_active_circles >= max_circles:
             return Response(
                 {'detail': _('参加可能なサークル数の上限に達しています。')},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # サークルに参加
-        CircleMembership.objects.create(
-            user=request.user,
-            circle=circle
-        )
-        circle.member_count += 1
-        circle.save()
+        # 申請メッセージを取得
+        application_message = request.data.get('application_message', '')
         
-        return Response(status=status.HTTP_201_CREATED)
+        # サークルタイプに応じて処理を分岐
+        if circle.circle_type == 'public':
+            # 公開サークル：即座に参加
+            membership = CircleMembership.objects.create(
+                user=request.user,
+                circle=circle,
+                status='active',
+                joined_at=timezone.now(),
+                application_message=application_message
+            )
+            
+            # メンバー数を更新
+            circle.member_count = CircleMembership.objects.filter(
+                circle=circle,
+                status='active'
+            ).count()
+            circle.save()
+            
+            return Response({
+                'detail': _('サークルに参加しました。'),
+                'membership': CircleMembershipSerializer(membership).data
+            }, status=status.HTTP_201_CREATED)
+            
+        elif circle.circle_type == 'approval':
+            # 承認制サークル：申請として作成
+            membership = CircleMembership.objects.create(
+                user=request.user,
+                circle=circle,
+                status='pending',
+                application_message=application_message
+            )
+            
+            return Response({
+                'detail': _('参加申請を送信しました。承認をお待ちください。'),
+                'membership': CircleMembershipSerializer(membership).data
+            }, status=status.HTTP_201_CREATED)
+            
+        else:
+            # プライベートサークル：招待制のため申請不可
+            return Response(
+                {'detail': _('このサークルは招待制です。')},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
     @action(detail=True, methods=['post'])
     def leave(self, request, pk=None):
@@ -236,6 +333,56 @@ class CircleViewSet(viewsets.ModelViewSet):
             'count': len(trending_circles),
             'results': serializer.data
         })
+
+    @action(detail=False, methods=['get'], permission_classes=[])
+    def debug_valid_circles(self, request):
+        """デバッグ用：存在するサークルのID一覧を返す"""
+        circles = Circle.objects.all()[:5]
+        data = []
+        for circle in circles:
+            data.append({
+                'id': str(circle.id),
+                'name': circle.name,
+                'status': circle.status,
+                'circle_type': circle.circle_type
+            })
+        
+        return Response({
+            'count': len(data),
+            'circles': data
+        })
+
+    def list(self, request):
+        """サークル一覧を取得（一時的に認証不要）"""
+        print(f"\n📋 =============== サークル一覧取得リクエスト ===============")
+        print(f"👤 リクエストユーザー: {request.user}")
+        
+        queryset = self.get_queryset()
+        
+        print(f"💾 データベースから取得したサークル一覧:")
+        for i, circle in enumerate(queryset[:10], 1):
+            print(f"   {i}. ID: {circle.id}")
+            print(f"      Name: {circle.name}")
+            print(f"      Status: {circle.status}, Type: {circle.circle_type}")
+            print(f"      Members: {circle.member_count}")
+        
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            print(f"\n📡 フロントエンドに送信するサークルデータ (ページ分割):")
+            for i, circle_data in enumerate(serializer.data, 1):
+                print(f"   {i}. 送信ID: {circle_data['id']}")
+                print(f"      Name: {circle_data['name']}")
+            print(f"===============================================================\n")
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        print(f"\n📡 フロントエンドに送信するサークルデータ (全件):")
+        for i, circle_data in enumerate(serializer.data, 1):
+            print(f"   {i}. 送信ID: {circle_data['id']}")
+            print(f"      Name: {circle_data['name']}")
+        print(f"===============================================================\n")
+        return Response(serializer.data)
 
 class CircleMembershipViewSet(viewsets.ReadOnlyModelViewSet):
     """サークルメンバーシップのビューセット"""

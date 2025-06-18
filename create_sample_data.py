@@ -304,10 +304,98 @@ def create_users():
     print(f'👥 サンプルユーザーデータ作成完了！（新規作成: {created_count}人, {elapsed_time:.2f}秒）')
     return created_count
 
+def create_circles():
+    """サークルダミーデータ作成"""
+    from knest_backend.apps.circles.models import Circle, Category
+    from datetime import timezone, datetime
+    
+    start_time = time()
+    print("🎪 サークルダミーデータを作成中...")
+    
+    # カテゴリデータ（slugフィールドを削除）
+    categories_data = [
+        ('技術・学習', 'プログラミング、IT技術、学術研究など'),
+        ('スポーツ・健康', '運動、フィットネス、スポーツ競技など'),
+        ('娯楽・趣味', 'ゲーム、映画、音楽、アートなど'),
+        ('食べ物・料理', '料理、グルメ、レストランなど'),
+        ('旅行・お出かけ', '旅行、散策、観光など'),
+    ]
+    
+    # サークルデータ（カテゴリ名で参照）
+    circles_data = [
+        ('iOS開発サークル', 'iOSアプリ開発を学ぶサークルです。初心者から上級者まで歓迎！一緒にアプリを作りましょう。', '技術・学習', ['iOS', 'Swift', 'プログラミング', 'アプリ開発']),
+        ('デザイン研究会', 'UI/UXデザインを学ぶ研究会です。デザインツールの使い方からユーザビリティまで幅広く学習。', '技術・学習', ['デザイン', 'UI/UX', 'Figma', 'クリエイティブ']),
+        ('フットサル同好会', '毎週末フットサルを楽しんでいます。初心者大歓迎！みんなでワイワイ楽しみましょう。', 'スポーツ・健康', ['フットサル', 'サッカー', 'スポーツ', '運動']),
+        ('カフェ巡りの会', '都内のおしゃれなカフェを巡ります。美味しいコーヒーとスイーツを求めて新しいお店を開拓。', '食べ物・料理', ['カフェ', 'コーヒー', 'スイーツ', 'グルメ']),
+        ('読書クラブ', '月1冊の本を読んで感想を共有します。ジャンル問わず、様々な本に出会える読書サークル。', '娯楽・趣味', ['読書', '文学', '小説', 'ビジネス書']),
+    ]
+    
+    with transaction.atomic():
+        created_categories = 0
+        created_circles = 0
+        
+        # 管理ユーザーまたは最初のユーザーを取得
+        try:
+            admin_user = User.objects.filter(is_superuser=True).first()
+            if not admin_user:
+                admin_user = User.objects.first()
+                if not admin_user:
+                    print("❌ ユーザーが存在しません。先にユーザーを作成してください。")
+                    return 0
+        except Exception as e:
+            print(f"❌ ユーザー取得エラー: {e}")
+            return 0
+        
+        # カテゴリ作成（slugフィールドを削除）
+        existing_categories = set(Category.objects.values_list('name', flat=True))
+        for name, description in categories_data:
+            if name not in existing_categories:
+                Category.objects.create(
+                    name=name,
+                    description=description
+                )
+                created_categories += 1
+                print(f"  ✅ カテゴリ '{name}' 作成")
+        
+        # サークル作成
+        existing_circles = set(Circle.objects.values_list('name', flat=True))
+        print(f"  既存サークル: {len(existing_circles)}個")
+        
+        for name, description, category_name, tags in circles_data:
+            if name not in existing_circles:
+                try:
+                    category = Category.objects.get(name=category_name)
+                    circle = Circle.objects.create(
+                        name=name,
+                        description=description,
+                        status='open',
+                        circle_type='public',
+                        creator=admin_user,
+                        owner=admin_user,
+                        member_count=random.randint(5, 25),
+                        post_count=random.randint(10, 50),
+                        tags=tags,
+                        last_activity=datetime.now(timezone.utc)
+                    )
+                    # ManyToManyフィールドはcreate後に追加
+                    circle.categories.add(category)
+                    created_circles += 1
+                    print(f"  ✅ サークル '{name}' 作成 (ID: {circle.id})")
+                except Category.DoesNotExist:
+                    print(f"  ❌ カテゴリ '{category_name}' が見つかりません")
+                except Exception as e:
+                    print(f"  ❌ サークル '{name}' 作成エラー: {e}")
+            else:
+                print(f"  📌 サークル '{name}' は既に存在します")
+    
+    elapsed_time = time() - start_time
+    print(f'🎪 サークルダミーデータ作成完了！（カテゴリ: {created_categories}個, サークル: {created_circles}個, {elapsed_time:.2f}秒）')
+    return created_circles
+
 def main():
     """メイン処理"""
     if len(sys.argv) < 2:
-        print("使用方法: python create_sample_data.py [interests|users|all]")
+        print("使用方法: python create_sample_data.py [interests|users|circles|all]")
         sys.exit(1)
     
     command = sys.argv[1]
@@ -316,17 +404,21 @@ def main():
         create_interests()
     elif command == 'users':
         create_users()
+    elif command == 'circles':
+        create_circles()
     elif command == 'all':
         print("🎉 基本初期データ作成を開始します...")
         interests_count = create_interests()
         users_count = create_users()
+        circles_count = create_circles()
         print("\n🎉 基本初期データ作成完了！")
         print(f"📊 作成されたデータ:")
         print(f"  - 興味関心: {interests_count}個")
         print(f"  - ユーザー: {users_count}人")
+        print(f"  - サークル: {circles_count}個")
     else:
         print(f"❌ 不明なコマンド: {command}")
-        print("使用可能なコマンド: interests, users, all")
+        print("使用可能なコマンド: interests, users, circles, all")
         sys.exit(1)
 
 if __name__ == '__main__':

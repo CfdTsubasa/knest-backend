@@ -124,7 +124,7 @@ class UserInterestProfileSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = UserInterestProfile
-        fields = ['id', 'user', 'category', 'subcategory', 'tag', 'tag_id', 'intensity', 'added_at']
+        fields = ['id', 'user', 'category', 'subcategory', 'tag', 'tag_id', 'added_at']
         read_only_fields = ['id', 'user', 'category', 'subcategory', 'added_at']
 
     def create(self, validated_data):

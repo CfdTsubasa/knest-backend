@@ -2,7 +2,7 @@
 
 # 仮想環境設定
 VENV := venv
-PYTHON := ./$(VENV)/bin/python
+PYTHON := ./$(VENV)/bin/python3
 PIP := ./$(VENV)/bin/pip
 MANAGE := $(PYTHON) manage.py
 
@@ -12,9 +12,9 @@ MAKEFLAGS += --jobs=4 --load-average=8.0
 # デフォルトターゲット
 help:
 	@echo "🚀 Knest開発環境コマンド一覧"
-	@echo "  make setup           - 初回セットアップ（仮想環境作成 + 依存関係インストール）"
+	@echo "  make setup           - 初回セットアップ（仮想環境 + 依存関係 + DB + 管理者ユーザー作成）"
 	@echo "  make dev             - 開発サーバー起動"
-	@echo "  make createsuperuser - 管理者ユーザー作成"
+	@echo "  make createsuperuser - 管理者ユーザー個別作成（再作成時など）"
 	@echo "  make install         - 依存パッケージインストール"
 	@echo "  make migrate         - データベースマイグレーション"
 	@echo "  make makemigrations  - マイグレーションファイル作成"
@@ -49,25 +49,49 @@ check-venv:
 # 初回セットアップ
 setup:
 	@echo "📦 仮想環境を作成しています..."
-	python -m venv venv
+	python3 -m venv venv
 	@echo "🔧 仮想環境を有効化して依存パッケージをインストールしています..."
 	./venv/bin/pip install -r requirements.txt
 	@echo "🗃️ データベースマイグレーションを実行しています..."
-	./venv/bin/python manage.py migrate
-	@echo "✅ セットアップ完了！'make createsuperuser' で管理者ユーザーを作成してください"
+	./venv/bin/python3 manage.py migrate
+	@echo "👤 管理者ユーザー（admin）を作成しています..."
+	@DJANGO_SUPERUSER_USERNAME=admin \
+	DJANGO_SUPERUSER_EMAIL=admin@example.com \
+	DJANGO_SUPERUSER_PASSWORD=admin123 \
+	./venv/bin/python3 manage.py createsuperuser --noinput
+	@echo "🎪 サークルダミーデータを作成しています..."
+	./venv/bin/python3 create_sample_data.py circles
+	@echo "✅ セットアップ完了！"
+	@echo "   管理者アカウント: admin / admin123"
+	@echo "   管理画面: http://localhost:8000/admin/"
+	@echo "   サークルデータ: 5つのサンプルサークルを作成しました"
 
 # 開発サーバー起動
 dev: check-venv
 	@echo "🚀 開発サーバーを起動しています..."
+	@echo "👤 管理者ユーザーをチェック中..."
+	@if ! $(PYTHON) -c "import django; django.setup(); from django.contrib.auth.models import User; exit(0 if User.objects.filter(username='admin').exists() else 1)" 2>/dev/null; then \
+		echo "  管理者ユーザーが見つかりません。作成中..."; \
+		DJANGO_SUPERUSER_USERNAME=admin \
+		DJANGO_SUPERUSER_EMAIL=admin@example.com \
+		DJANGO_SUPERUSER_PASSWORD=admin123 \
+		$(PYTHON) manage.py createsuperuser --noinput; \
+		echo "  ✅ 管理者ユーザー（admin）を作成しました"; \
+	else \
+		echo "  ✅ 管理者ユーザー（admin）が存在します"; \
+	fi
 	@echo "🌐 http://localhost:8000 でアクセスできます"
-	@echo "🔧 管理画面: http://localhost:8000/admin/"
+	@echo "🔧 管理画面: http://localhost:8000/admin/ (admin / admin123)"
 	@echo "📚 API文書: http://localhost:8000/swagger/"
 	$(MANAGE) runserver
 
-# 管理者ユーザー作成
+# 管理者ユーザー作成（個別実行用）
 createsuperuser: check-venv
-	@echo "👤 管理者ユーザーを作成しています..."
-	$(MANAGE) createsuperuser
+	@echo "👤 管理者ユーザーを作成しています（個別実行）..."
+	@DJANGO_SUPERUSER_USERNAME=admin \
+	DJANGO_SUPERUSER_EMAIL=admin@example.com \
+	DJANGO_SUPERUSER_PASSWORD=admin123 \
+	$(MANAGE) createsuperuser --noinput
 
 # 依存パッケージインストール
 install: check-venv
@@ -201,11 +225,11 @@ status:
 setup-fast:
 	@echo "🚀 高速セットアップを開始します..."
 	@echo "📦 仮想環境を作成しています..."
-	python -m venv venv
+	python3 -m venv venv
 	@echo "🔧 仮想環境を有効化して依存パッケージをインストールしています..."
 	./venv/bin/pip install -r requirements.txt --quiet --disable-pip-version-check
 	@echo "🗃️ データベースマイグレーションを実行しています..."
-	./venv/bin/python manage.py migrate --verbosity=1
+	./venv/bin/python3 manage.py migrate --verbosity=1
 	@echo "✅ セットアップ完了！'make createsuperuser' で管理者ユーザーを作成してください"
 
 # 高速初期データ作成（並列処理）

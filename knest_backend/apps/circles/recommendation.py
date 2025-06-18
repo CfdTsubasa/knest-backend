@@ -7,6 +7,8 @@ from .models import Circle
 from ..interests.models import UserInterest
 from ..users.models import User
 import math
+import random
+from datetime import datetime, timedelta
 from collections import defaultdict
 
 
@@ -31,12 +33,16 @@ class CircleRecommendationEngine:
             return self._simple_matching(limit)
     
     def _simple_matching(self, limit):
-        """シンプルな興味関心マッチング"""
+        """シンプルな興味関心マッチング（ランダム性追加）"""
         if not self.user_interests.exists():
-            # 興味関心がない場合は人気サークルを返す
-            return Circle.objects.filter(
+            # 興味関心がない場合は人気サークル + ランダム要素
+            circles = list(Circle.objects.filter(
                 status='open'
-            ).order_by('-member_count')[:limit]
+            ).order_by('-member_count')[:limit * 2])  # 2倍取得
+            
+            # ランダムにシャッフルして限定数返す
+            random.shuffle(circles)
+            return circles[:limit]
         
         user_interest_ids = self.user_interests.values_list('interest_id', flat=True)
         
@@ -50,12 +56,30 @@ class CircleRecommendationEngine:
             # 既に参加済みのサークルを除外
             memberships__user=self.user,
             memberships__status='active'
-        ).order_by('-distinct_matches', '-member_count')[:limit]
+        ).order_by('-distinct_matches', '-member_count')
         
-        return circles
+        # トップマッチをリスト化してランダマイズ
+        circle_list = list(circles[:limit * 2])  # 2倍取得
+        
+        # スコアグループ化でランダマイズ
+        score_groups = {}
+        for circle in circle_list:
+            score = circle.distinct_matches
+            if score not in score_groups:
+                score_groups[score] = []
+            score_groups[score].append(circle)
+        
+        # 各スコアグループ内でランダマイズ
+        final_result = []
+        for score in sorted(score_groups.keys(), reverse=True):
+            group = score_groups[score]
+            random.shuffle(group)  # グループ内をシャッフル
+            final_result.extend(group)
+        
+        return final_result[:limit]
     
     def _weighted_scoring(self, limit):
-        """重み付けスコアリング（シンプル版）"""
+        """重み付けスコアリング（ランダム性とexploration追加）"""
         circles_scores = []
         user_interest_ids = set(self.user_interests.values_list('interest_id', flat=True))
         
@@ -65,49 +89,85 @@ class CircleRecommendationEngine:
         ).prefetch_related('interests')
         
         for circle in circles:
-            score = self._calculate_circle_score(circle, user_interest_ids)
-            if score > 0:
-                circles_scores.append((circle, score))
+            base_score = self._calculate_circle_score(circle, user_interest_ids)
+            
+            # ランダム探索要素（20%の確率で探索）
+            exploration_bonus = 0
+            if random.random() < 0.2:
+                exploration_bonus = random.randint(10, 50)
+            
+            # 時間的多様性（アクセス時間に応じた微調整）
+            time_variation = random.randint(-5, 15)
+            
+            final_score = base_score + exploration_bonus + time_variation
+            
+            if final_score > 0:
+                circles_scores.append((circle, final_score))
         
         # スコア順でソート
         circles_scores.sort(key=lambda x: x[1], reverse=True)
-        return [circle for circle, score in circles_scores[:limit]]
+        
+        # トップ候補の中からランダムサンプリング
+        top_candidates = circles_scores[:limit * 2]  # 2倍の候補取得
+        
+        # 80%確率で高スコア、20%確率でランダム選択
+        final_selection = []
+        used_indices = set()
+        
+        for i in range(min(limit, len(top_candidates))):
+            if random.random() < 0.8 and i < len(top_candidates):
+                # 高スコア優先選択
+                if i not in used_indices:
+                    final_selection.append(top_candidates[i][0])
+                    used_indices.add(i)
+            else:
+                # ランダム選択
+                available_indices = [j for j in range(len(top_candidates)) if j not in used_indices]
+                if available_indices:
+                    random_idx = random.choice(available_indices)
+                    final_selection.append(top_candidates[random_idx][0])
+                    used_indices.add(random_idx)
+        
+        return final_selection
     
     def _calculate_circle_score(self, circle, user_interest_ids):
-        """サークルのスコアを計算（シンプル版）"""
+        """サークルのスコアを計算（ランダム要素追加）"""
         score = 0
         
-        # 1. 興味関心マッチングスコア（シンプル）
+        # 1. 興味関心マッチングスコア
         matching_interests = 0
         for interest in circle.interests.all():
             if interest.id in user_interest_ids:
                 matching_interests += 1
                 score += 30  # 基本マッチスコア
         
-        # 2. マッチング度ボーナス（複数マッチでボーナス）
+        # 2. マッチング度ボーナス
         if matching_interests >= 3:
-            score += 50  # 3つ以上マッチで大ボーナス
+            score += 50
         elif matching_interests >= 2:
-            score += 20  # 2つマッチで小ボーナス
+            score += 20
         
         # 3. サークルの活発さスコア
-        activity_score = min(circle.member_count * 0.5, 40)  # 最大40点
-        post_activity = min(circle.post_count * 0.1, 20)     # 最大20点
+        activity_score = min(circle.member_count * 0.5, 40)
+        post_activity = min(circle.post_count * 0.1, 20)
         score += activity_score + post_activity
         
-        # 4. サークルの新鮮さスコア（新しいサークルを少し優遇）
-        import datetime
-        days_since_creation = (datetime.datetime.now().date() - circle.created_at.date()).days
+        # 4. 新鮮さスコア（時間依存）
+        days_since_creation = (datetime.now().date() - circle.created_at.date()).days
         if days_since_creation < 30:
-            score += 15  # 新規サークルボーナス
+            score += 15
         elif days_since_creation < 90:
-            score += 8   # 比較的新しいサークル
+            score += 8
         
         # 5. 満員度ペナルティ
         if circle.member_limit and circle.member_count >= circle.member_limit * 0.9:
-            score *= 0.6  # 90%以上埋まっている場合はスコア40%減
+            score *= 0.6
         elif circle.member_limit and circle.member_count >= circle.member_limit * 0.7:
-            score *= 0.8  # 70%以上埋まっている場合はスコア20%減
+            score *= 0.8
+        
+        # 6. 🎲 ランダム変動要素（±10%）
+        randomness = random.uniform(0.9, 1.1)
+        score *= randomness
         
         return score
     
@@ -156,33 +216,62 @@ class CircleRecommendationEngine:
         return similar_users
     
     def _hybrid_approach(self, limit):
-        """ハイブリッドアプローチ"""
-        # 各アルゴリズムの結果を組み合わせ
-        simple_results = list(self._simple_matching(limit))
-        weighted_results = list(self._weighted_scoring(limit))
-        collab_results = list(self._collaborative_filtering(limit // 2))
+        """ハイブリッドアプローチ（ランダム性と多様性追加）"""
+        # 各アルゴリズムの結果を組み合わせ（動的な重み付け）
+        simple_weight = random.uniform(0.2, 0.4)    # 20-40%
+        weighted_weight = random.uniform(0.3, 0.5)  # 30-50%
+        collab_weight = 1.0 - simple_weight - weighted_weight  # 残り
         
-        # 重複を除去しつつ結合
+        simple_count = max(1, int(limit * simple_weight))
+        weighted_count = max(1, int(limit * weighted_weight))
+        collab_count = max(1, int(limit * collab_weight))
+        
+        simple_results = list(self._simple_matching(simple_count * 2))
+        weighted_results = list(self._weighted_scoring(weighted_count * 2))
+        collab_results = list(self._collaborative_filtering(collab_count * 2))
+        
+        # 重複を除去しつつ結合（順序をランダマイズ）
         seen_ids = set()
         final_results = []
         
-        # 重み付けスコアリングの結果を優先
-        for circle in weighted_results:
-            if circle.id not in seen_ids:
-                final_results.append(circle)
-                seen_ids.add(circle.id)
+        # ランダムにアルゴリズムの優先順位を決定
+        algorithms = [
+            ('weighted', weighted_results),
+            ('collaborative', collab_results),
+            ('simple', simple_results)
+        ]
+        random.shuffle(algorithms)  # 毎回異なる優先順位
         
-        # 協調フィルタリングの結果を追加
-        for circle in collab_results:
-            if circle.id not in seen_ids and len(final_results) < limit:
-                final_results.append(circle)
-                seen_ids.add(circle.id)
+        # 各アルゴリズムから交互に選択
+        max_iterations = limit * 2
+        iteration = 0
         
-        # シンプルマッチングで残りを埋める
-        for circle in simple_results:
-            if circle.id not in seen_ids and len(final_results) < limit:
-                final_results.append(circle)
-                seen_ids.add(circle.id)
+        while len(final_results) < limit and iteration < max_iterations:
+            for name, results in algorithms:
+                if len(final_results) >= limit:
+                    break
+                
+                # 各アルゴリズムから1-2個をランダム選択
+                available_circles = [c for c in results if c.id not in seen_ids]
+                if available_circles:
+                    # ランダムに1-2個選択
+                    selection_count = random.randint(1, min(2, len(available_circles), limit - len(final_results)))
+                    selected = random.sample(available_circles, selection_count)
+                    
+                    for circle in selected:
+                        if circle.id not in seen_ids:
+                            final_results.append(circle)
+                            seen_ids.add(circle.id)
+            
+            iteration += 1
+        
+        # 最終結果もシャッフル
+        if len(final_results) > limit // 2:
+            # 上位半分は維持、下位半分はシャッフル
+            top_half = final_results[:limit // 2]
+            bottom_half = final_results[limit // 2:]
+            random.shuffle(bottom_half)
+            final_results = top_half + bottom_half
         
         return final_results[:limit]
 
