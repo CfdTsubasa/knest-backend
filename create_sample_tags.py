@@ -37,7 +37,7 @@ def create_sample_tags():
         )
         if created:
             created_count += 1
-            print(f"✅ タグ作成: {tag_name}")
+            print(f"[COMPLETE] タグ作成: {tag_name}")
         else:
             print(f"⚠️ タグ既存: {tag_name}")
     

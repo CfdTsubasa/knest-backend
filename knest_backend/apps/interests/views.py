@@ -368,7 +368,7 @@ class MatchingEngineViewSet(viewsets.ViewSet):
                     current_profile.tag_id == target_profile.tag_id):
                     exact_matches += 1
                     if current_profile.tag:
-                        common_interest_names.append(f"🎯 {current_profile.tag.name}")
+                        common_interest_names.append(f"[TARGET] {current_profile.tag.name}")
                 
                 # サブカテゴリレベル一致（タグ不一致の場合）
                 elif (current_profile.subcategory_id and target_profile.subcategory_id and 
@@ -472,7 +472,7 @@ class MatchingEngineViewSet(viewsets.ViewSet):
                 # タグレベル完全一致
                 if user_profile.tag_id and user_profile.tag_id == circle_tag.id:
                     exact_matches += 1
-                    common_interest_names.append(f"🎯 {circle_tag.name}")
+                    common_interest_names.append(f"[TARGET] {circle_tag.name}")
                 
                 # サブカテゴリレベル一致（タグ不一致の場合）
                 elif (user_profile.subcategory_id and 
@@ -572,7 +572,7 @@ class MatchingEngineViewSet(viewsets.ViewSet):
             return Response(circle_matches)
             
         except Exception as e:
-            print(f"❌ サークルマッチングエラー: {e}")
+            print(f"[ERROR] サークルマッチングエラー: {e}")
             # フォールバック: 基本的な推薦システムを使用
             return self._fallback_circle_matching(current_user, limit)
     
@@ -754,6 +754,12 @@ class MatchingEngineViewSet(viewsets.ViewSet):
         print(f"🔧 アルゴリズム: {algorithm}")
         print(f"📊 取得制限数: {limit}")
         
+        # ログレベルを一時的にDEBUGに設定
+        import logging
+        recommendation_logger = logging.getLogger('knest_backend.apps.recommendations.engines')
+        original_level = recommendation_logger.level
+        recommendation_logger.setLevel(logging.DEBUG)
+        
         try:
             # 次世代推薦エンジンでおすすめサークルを取得
             from ..recommendations.engines import NextGenRecommendationEngine
@@ -768,18 +774,47 @@ class MatchingEngineViewSet(viewsets.ViewSet):
             print(f"\n💾 推薦エンジンが返したサークル:")
             for i, rec in enumerate(recommendations['recommendations'], 1):
                 circle = rec['circle']
+                score_breakdown = rec.get('score_breakdown', {})
+                
                 print(f"   {i}. DB ID: {circle.id}")
                 print(f"      Name: {circle.name}")
-                print(f"      Score: {rec['score']:.3f}")
+                print(f"      Total Score: {rec['score']:.3f}")
                 print(f"      Confidence: {rec['confidence']:.3f}")
+                
+                # スコア内訳を詳細表示
+                if score_breakdown:
+                    total = score_breakdown.get('total', rec['score'])
+                    print(f"      === スコア内訳 ===")
+                    print(f"      階層マッチング: {score_breakdown.get('hierarchical', 0):.3f} ({score_breakdown.get('hierarchical', 0)/total*100:.1f}%)")
+                    print(f"      協調フィルタリング: {score_breakdown.get('collaborative', 0):.3f} ({score_breakdown.get('collaborative', 0)/total*100:.1f}%)")
+                    print(f"      行動ベース: {score_breakdown.get('behavioral', 0):.3f} ({score_breakdown.get('behavioral', 0)/total*100:.1f}%)")
+                    print(f"      多様性保証: {score_breakdown.get('diversity', 0):.3f} ({score_breakdown.get('diversity', 0)/total*100:.1f}%)")
+                    print(f"      人気度ボーナス: {score_breakdown.get('popularity', 0):.3f} ({score_breakdown.get('popularity', 0)/total*100:.1f}%)")
+                    print(f"      ================")
+                
+                # 推薦理由の詳細表示
+                reasons = rec.get('reasons', [])
+                print(f"      推薦理由:")
+                for j, reason in enumerate(reasons, 1):
+                    weight = reason.get('weight', 0)
+                    contribution_pct = reason.get('contribution_percentage', 0)
+                    print(f"        {j}. {reason['type']}: {reason['detail']}")
+                    print(f"           重み: {weight:.3f}, 寄与率: {contribution_pct:.1f}%")
             
             # レスポンス形式を整理
             response_data = {
                 'circles': [],
                 'algorithm_used': algorithm,
+                'algorithm_weights': recommendations.get('algorithm_weights', {}),
                 'computation_time_ms': recommendations.get('computation_time_ms', 0),
                 'total_candidates': recommendations.get('total_candidates', 0)
             }
+            
+            # アルゴリズム重みも詳細ログ出力
+            algorithm_weights = recommendations.get('algorithm_weights', {})
+            print(f"\n📊 使用されたアルゴリズム重み:")
+            for algorithm_name, weight in algorithm_weights.items():
+                print(f"   {algorithm_name}: {weight:.3f}")
             
             print(f"\n📡 フロントエンドに送信するサークルデータ:")
             for i, rec in enumerate(recommendations['recommendations'], 1):
@@ -787,6 +822,7 @@ class MatchingEngineViewSet(viewsets.ViewSet):
                 score = rec['score']
                 reasons = rec['reasons']
                 confidence = rec['confidence']
+                score_breakdown = rec.get('score_breakdown', {})
                 
                 # UUIDを新規生成（マッチング用の一意ID）
                 match_id = str(uuid.uuid4())
@@ -822,10 +858,13 @@ class MatchingEngineViewSet(viewsets.ViewSet):
                     'matching_details': {
                         'total_score': round(score, 3),
                         'confidence': round(confidence, 3),
+                        'score_breakdown': score_breakdown,
                         'reasons': [{
                             'type': reason['type'],
                             'detail': reason['detail'],
-                            'weight': reason['weight']
+                            'weight': reason['weight'],
+                            'explanation': reason.get('explanation', ''),
+                            'contribution_percentage': reason.get('contribution_percentage', 0)
                         } for reason in reasons],
                         'match_explanation': self._generate_detailed_explanation(reasons, score)
                     },
@@ -836,11 +875,19 @@ class MatchingEngineViewSet(viewsets.ViewSet):
             
             print(f"✅ 推薦サークル送信完了 ({len(response_data['circles'])}件)")
             print(f"===============================================================\n")
+            
+            # ログレベルを元に戻す
+            recommendation_logger.setLevel(original_level)
+            
             return Response(response_data)
             
         except Exception as e:
             print(f"❌ おすすめサークル取得エラー: {e}")
             print(f"🔄 フォールバック処理に移行します")
+            
+            # ログレベルを元に戻す
+            recommendation_logger.setLevel(original_level)
+            
             # フォールバック処理
             return self._fallback_recommended_circles(current_user, limit)
     

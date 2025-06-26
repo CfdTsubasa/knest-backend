@@ -8,8 +8,8 @@ class InterestSerializer(serializers.ModelSerializer):
     """興味のシリアライザー"""
     class Meta:
         model = Interest
-        fields = ['id', 'name', 'description', 'category', 'is_official', 'usage_count', 'icon_url', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'name', 'description', 'category', 'is_official', 'usage_count', 'icon_url', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 class UserInterestSerializer(serializers.ModelSerializer):
     """ユーザー興味関心シリアライザー（シンプル版）"""

@@ -320,6 +320,76 @@ class CircleViewSet(viewsets.ModelViewSet):
             'results': serializer.data
         })
 
+    @action(detail=True, methods=['put'], permission_classes=[IsAuthenticated])
+    def update_interests(self, request, pk=None):
+        """
+        サークルの興味関心を更新（参加者のみ）
+        
+        Body:
+        {
+            "interest_ids": ["uuid1", "uuid2", ...]
+        }
+        """
+        circle = self.get_object()
+        
+        # メンバーかどうかチェック
+        if not CircleMembership.objects.filter(
+            user=request.user,
+            circle=circle,
+            status='active'
+        ).exists():
+            return Response(
+                {'error': 'サークルのメンバーのみ興味関心を編集できます'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        interest_ids = request.data.get('interest_ids', [])
+        
+        if not isinstance(interest_ids, list):
+            return Response(
+                {'error': 'interest_idsは配列である必要があります'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        from ..interests.models import Interest
+        
+        # 既存の興味関心をクリア
+        circle.interests.clear()
+        
+        # 新しい興味関心を追加
+        for interest_id in interest_ids:
+            try:
+                interest = Interest.objects.get(id=interest_id)
+                circle.interests.add(interest)
+            except Interest.DoesNotExist:
+                return Response(
+                    {'error': f'興味関心ID {interest_id} が見つかりません'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # サークル詳細を返す
+        serializer = self.get_serializer(circle)
+        return Response({
+            'message': '興味関心を更新しました',
+            'circle': serializer.data
+        })
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def available_interests(self, request, pk=None):
+        """
+        選択可能な興味関心一覧を取得
+        """
+        from ..interests.models import Interest
+        from ..interests.serializers import InterestSerializer
+        
+        interests = Interest.objects.all().order_by('-usage_count', 'name')
+        serializer = InterestSerializer(interests, many=True)
+        
+        return Response({
+            'count': len(interests),
+            'results': serializer.data
+        })
+
     @action(detail=False, methods=['get'])
     def trending(self, request):
         """
@@ -383,6 +453,84 @@ class CircleViewSet(viewsets.ModelViewSet):
             print(f"      Name: {circle_data['name']}")
         print(f"===============================================================\n")
         return Response(serializer.data)
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def members(self, request, pk=None):
+        """
+        サークルメンバー一覧を取得
+        """
+        try:
+            circle = self.get_object()
+            
+            # サークルメンバーのみアクセス可能
+            if not CircleMembership.objects.filter(
+                user=request.user,
+                circle=circle,
+                status='active'
+            ).exists():
+                return Response(
+                    {'error': 'サークルのメンバーのみアクセスできます'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # アクティブなメンバーを取得
+            memberships = CircleMembership.objects.filter(
+                circle=circle,
+                status='active'
+            ).select_related('user').order_by('-joined_at')
+            
+            # メンバー情報をシリアライズ
+            members_data = []
+            for membership in memberships:
+                try:
+                    # ユーザーの興味関心を取得（エラーハンドリング付き）
+                    user_interests = []
+                    try:
+                        from ..interests.models import UserInterest
+                        user_interest_objects = UserInterest.objects.filter(
+                            user=membership.user
+                        ).select_related('interest')
+                        
+                        user_interests = [
+                            {
+                                'id': str(ui.interest.id),
+                                'name': ui.interest.name,
+                                'category': ui.interest.category
+                            } for ui in user_interest_objects
+                        ]
+                    except Exception as e:
+                        print(f"興味関心取得エラー (user {membership.user.id}): {e}")
+                        user_interests = []
+                    
+                    member_data = {
+                        'id': str(membership.id),
+                        'user': {
+                            'id': str(membership.user.id),
+                            'username': membership.user.username,
+                            'displayName': getattr(membership.user, 'display_name', '') or membership.user.username,
+                            'profilePictureUrl': getattr(membership.user, 'profile_picture_url', None),
+                            'bio': getattr(membership.user, 'bio', '') or '',
+                        },
+                        'role': membership.role if hasattr(membership, 'role') else 'member',
+                        'joinedAt': membership.joined_at.isoformat() if membership.joined_at else None,
+                        'interests': user_interests
+                    }
+                    members_data.append(member_data)
+                except Exception as e:
+                    print(f"メンバーデータ構築エラー (membership {membership.id}): {e}")
+                    continue
+            
+            return Response({
+                'count': len(members_data),
+                'results': members_data
+            })
+        
+        except Exception as e:
+            print(f"メンバー取得API全体エラー: {e}")
+            return Response(
+                {'error': f'メンバー情報の取得に失敗しました: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class CircleMembershipViewSet(viewsets.ReadOnlyModelViewSet):
     """サークルメンバーシップのビューセット"""
