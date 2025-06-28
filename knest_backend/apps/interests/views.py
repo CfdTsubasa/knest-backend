@@ -1,28 +1,22 @@
-import uuid
-from django.shortcuts import render
-from django.db.models import Q, Count
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from django.db.models import Count, Q
 from django.contrib.auth import get_user_model
-from django.db import transaction
-from datetime import date, timedelta
+import uuid
+
 from .models import (
-    Interest, UserInterest, Tag, UserTag,
+    Interest, UserInterest,
     InterestCategory, InterestSubcategory, InterestTag, UserInterestProfile
 )
 from .serializers import (
-    InterestSerializer, UserInterestSerializer, TagSerializer, UserTagSerializer,
-    InterestCategorySerializer, InterestSubcategorySerializer, InterestTagSerializer,
-    UserInterestProfileSerializer, HierarchicalInterestTreeSerializer,
-    UserMatchSerializer, CircleMatchSerializer
+    InterestSerializer, UserInterestSerializer,
+    InterestCategorySerializer, InterestSubcategorySerializer, InterestTagSerializer, UserInterestProfileSerializer,
+    HierarchicalInterestTreeSerializer, MatchingScoreSerializer, UserMatchSerializer, CircleMatchSerializer
 )
-from ..users.models import User
-from ..circles.models import Circle
 
 User = get_user_model()
-
 
 class InterestViewSet(viewsets.ReadOnlyModelViewSet):
     """
@@ -35,18 +29,10 @@ class InterestViewSet(viewsets.ReadOnlyModelViewSet):
     
     def get_queryset(self):
         queryset = super().get_queryset()
-        # カテゴリでフィルタリング
-        category = self.request.query_params.get('category', None)
-        if category:
-            queryset = queryset.filter(category=category)
-        
-        # 検索クエリ
+        # 検索クエリでフィルタリング
         search = self.request.query_params.get('search', None)
         if search:
-            queryset = queryset.filter(
-                Q(name__icontains=search) | Q(description__icontains=search)
-            )
-        
+            queryset = queryset.filter(name__icontains=search)
         return queryset
     
     @action(detail=False, methods=['get'])
@@ -58,10 +44,14 @@ class InterestViewSet(viewsets.ReadOnlyModelViewSet):
     
     @action(detail=False, methods=['get'])
     def categories(self, request):
-        """カテゴリ一覧を取得"""
-        categories = Interest.objects.values_list('category', flat=True).distinct()
-        return Response(list(categories))
-
+        """カテゴリ別の興味関心を取得"""
+        category = request.query_params.get('category', None)
+        if category:
+            interests = self.get_queryset().filter(category=category)
+        else:
+            interests = self.get_queryset()
+        serializer = self.get_serializer(interests, many=True)
+        return Response(serializer.data)
 
 class UserInterestViewSet(viewsets.ModelViewSet):
     """
@@ -76,73 +66,32 @@ class UserInterestViewSet(viewsets.ModelViewSet):
         return UserInterest.objects.filter(user=self.request.user)
     
     def create(self, request, *args, **kwargs):
-        """興味関心を追加"""
+        """認証済みユーザーで興味関心を作成"""
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
         # 重複チェック
-        interest_id = serializer.validated_data['interest'].id
+        interest_id = serializer.validated_data.get('interest_id')
         existing = UserInterest.objects.filter(
-            user=self.request.user,
+            user=request.user,
             interest_id=interest_id
-        ).first()
+        ).exists()
         
         if existing:
-            # 既に存在する場合は、そのオブジェクトを返す
             return Response(
-                UserInterestSerializer(existing).data,
-                status=status.HTTP_200_OK
+                {'error': 'この興味関心は既に選択されています'}, 
+                status=status.HTTP_400_BAD_REQUEST
             )
         
-        # 新規作成
-        serializer.save(user=self.request.user)
-        headers = self.get_success_headers(serializer.data)
-        return Response(
-            serializer.data,
-            status=status.HTTP_201_CREATED,
-            headers=headers
-        )
-
-
-class TagViewSet(viewsets.ReadOnlyModelViewSet):
-    """ハッシュタグ取得用ViewSet（サジェスト用）"""
-    queryset = Tag.objects.all()
-    serializer_class = TagSerializer
-    permission_classes = [AllowAny]
-    pagination_class = None
-    
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        # 検索クエリでフィルタリング（サジェスト機能）
-        search = self.request.query_params.get('search', None)
-        if search:
-            queryset = queryset.filter(name__icontains=search)
+        # 興味関心を作成
+        user_interest = serializer.save(user=request.user)
         
-        # 使用回数の多い順で最大20件
-        return queryset[:20]
-    
-    @action(detail=False, methods=['get'])
-    def popular(self, request):
-        """人気のハッシュタグを取得"""
-        popular_tags = self.get_queryset().order_by('-usage_count')[:10]
-        serializer = self.get_serializer(popular_tags, many=True)
-        return Response(serializer.data)
-
-
-class UserTagViewSet(viewsets.ModelViewSet):
-    """ユーザーハッシュタグ管理用ViewSet"""
-    serializer_class = UserTagSerializer
-    permission_classes = [IsAuthenticated]  # 認証必須に変更
-    pagination_class = None
-    
-    def get_queryset(self):
-        """認証済みユーザーのタグのみ取得"""
-        return UserTag.objects.filter(user=self.request.user)
-    
-    def perform_create(self, serializer):
-        """認証済みユーザーでタグを作成"""
-        serializer.save(user=self.request.user)
-
+        # 使用回数を増加
+        interest = user_interest.interest
+        interest.usage_count += 1
+        interest.save()
+        
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 # ======================================
 # 新しい3階層興味関心システム用ViewSet
@@ -551,7 +500,6 @@ class MatchingEngineViewSet(viewsets.ViewSet):
                         'circle_type': circle.circle_type,
                         'member_count': circle.member_count,
                         'post_count': circle.post_count,
-                        'tags': circle.tags,
                         'created_at': circle.created_at.isoformat(),
                         'updated_at': circle.updated_at.isoformat(),
                         'last_activity_at': circle.last_activity.isoformat(),
@@ -621,7 +569,6 @@ class MatchingEngineViewSet(viewsets.ViewSet):
                             'circle_type': circle.circle_type,
                             'member_count': circle.member_count,
                             'post_count': circle.post_count,
-                            'tags': circle.tags,
                             'created_at': circle.created_at.isoformat(),
                             'updated_at': circle.updated_at.isoformat(),
                             'last_activity_at': circle.last_activity.isoformat(),
@@ -708,7 +655,6 @@ class MatchingEngineViewSet(viewsets.ViewSet):
                         'circle_type': circle.circle_type,
                         'member_count': circle.member_count,
                         'post_count': circle.post_count,
-                        'tags': circle.tags,
                         'created_at': circle.created_at.isoformat(),
                         'updated_at': circle.updated_at.isoformat(),
                         'last_activity_at': circle.last_activity.isoformat(),
@@ -843,9 +789,6 @@ class MatchingEngineViewSet(viewsets.ViewSet):
                         'circle_type': circle.circle_type,
                         'member_count': circle.member_count,
                         'post_count': circle.post_count,
-                        'tags': circle.tags,
-                        'icon_url': circle.icon_url,
-                        'cover_url': circle.cover_url,
                         'created_at': circle.created_at.isoformat(),
                         'updated_at': circle.updated_at.isoformat(),
                         'last_activity_at': circle.last_activity.isoformat(),
@@ -934,9 +877,6 @@ class MatchingEngineViewSet(viewsets.ViewSet):
                         'circle_type': circle.circle_type,
                         'member_count': circle.member_count,
                         'post_count': circle.post_count,
-                        'tags': circle.tags,
-                        'icon_url': circle.icon_url,
-                        'cover_url': circle.cover_url,
                         'created_at': circle.created_at.isoformat(),
                         'updated_at': circle.updated_at.isoformat(),
                         'last_activity_at': circle.last_activity.isoformat(),

@@ -10,6 +10,7 @@ from django.utils.crypto import get_random_string
 from django.utils import timezone
 from datetime import timedelta
 import logging
+from rest_framework.views import APIView
 
 from .serializers import (
     CustomTokenObtainPairSerializer,
@@ -145,4 +146,49 @@ class PasswordResetConfirmView(generics.GenericAPIView):
             return Response(
                 {"token": "無効または期限切れのトークンです。"},
                 status=status.HTTP_400_BAD_REQUEST
-            ) 
+            )
+
+class TestUserCreationView(APIView):
+    permission_classes = (AllowAny,)
+    
+    def post(self, request, *args, **kwargs):
+        # ランダムなユーザー名を生成
+        username = f"test_user_{get_random_string(8)}"
+        
+        # テストユーザーデータを作成
+        user_data = {
+            "username": username,
+            "email": f"{username}@example.com",
+            "password": "testpass123",
+            "password2": "testpass123",
+            "display_name": f"テストユーザー_{get_random_string(4)}"
+        }
+        
+        serializer = UserRegistrationSerializer(data=user_data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        user = serializer.save()
+        logger.info(f"Test user {user.username} created successfully")
+        
+        # レスポンスにトークンも含める
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
+        
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': {
+                'id': str(user.id),
+                'username': user.username,
+                'email': user.email,
+                'display_name': user.display_name,
+                'avatar_url': user.avatar_url or '',
+                'bio': user.bio or '',
+                'emotion_state': user.emotion_state or '',
+                'is_premium': user.is_premium,
+                'last_active': user.last_active.isoformat(),
+                'created_at': user.created_at.isoformat(),
+                'updated_at': user.updated_at.isoformat()
+            }
+        }, status=status.HTTP_201_CREATED) 

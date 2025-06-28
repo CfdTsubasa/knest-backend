@@ -201,11 +201,12 @@ class CircleChatSerializer(serializers.ModelSerializer):
     sender = serializers.SerializerMethodField()
     reply_to = serializers.SerializerMethodField()
     read_by = serializers.SerializerMethodField()
+    circle_id = serializers.UUIDField(write_only=True)
 
     class Meta:
         model = CircleChat
         fields = [
-            'id', 'circle', 'sender', 'content', 'media_urls',
+            'id', 'circle', 'circle_id', 'sender', 'content', 'media_urls',
             'created_at', 'updated_at', 'is_system_message',
             'is_edited', 'reply_to', 'read_by'
         ]
@@ -213,6 +214,15 @@ class CircleChatSerializer(serializers.ModelSerializer):
             'id', 'sender', 'created_at', 'updated_at',
             'is_edited', 'read_by'
         ]
+        extra_kwargs = {
+            'circle': {'read_only': True}
+        }
+
+    def create(self, validated_data):
+        circle_id = validated_data.pop('circle_id')
+        circle = Circle.objects.get(id=circle_id)
+        validated_data['circle'] = circle
+        return super().create(validated_data)
 
     def get_sender(self, obj):
         return {

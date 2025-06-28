@@ -1,6 +1,8 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
 
 class Interest(models.Model):
     CATEGORY_CHOICES = [
@@ -55,32 +57,6 @@ class UserInterest(models.Model):
     def __str__(self):
         return f"{self.user.username} - {self.interest.name}"
 
-class Tag(models.Model):
-    """ハッシュタグモデル"""
-    name = models.CharField(max_length=50, unique=True, db_index=True)
-    usage_count = models.IntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        ordering = ['-usage_count', 'name']
-    
-    def __str__(self):
-        return f"#{self.name}"
-
-class UserTag(models.Model):
-    """ユーザーとハッシュタグの関連"""
-    user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='user_tags')
-    tag = models.ForeignKey(Tag, on_delete=models.CASCADE, related_name='user_tags')
-    added_at = models.DateTimeField(auto_now_add=True)
-    
-    class Meta:
-        unique_together = ('user', 'tag')
-        ordering = ['-added_at']
-    
-    def __str__(self):
-        return f"{self.user.username} - #{self.tag.name}"
-
-
 # ======================================
 # 新しい3階層興味関心システム
 # ======================================
@@ -126,7 +102,7 @@ class InterestSubcategory(models.Model):
 class InterestTag(models.Model):
     """興味関心タグ（第3階層）"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    subcategory = models.ForeignKey(InterestSubcategory, on_delete=models.CASCADE, related_name='tags', verbose_name='サブカテゴリ')
+    subcategory = models.ForeignKey(InterestSubcategory, on_delete=models.CASCADE, related_name='interest_tags', verbose_name='サブカテゴリ')
     name = models.CharField(max_length=100, verbose_name='タグ名')
     description = models.TextField(verbose_name='説明')
     usage_count = models.IntegerField(default=0, verbose_name='使用回数')

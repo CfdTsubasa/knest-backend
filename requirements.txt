@@ -38,6 +38,6 @@ invoke==2.2.0
 django-redis==5.4.0
 
 # パフォーマンス向上
-django-cachalot==2.5.1
+# django-cachalot==2.5.1
 django-extensions==3.2.3
 django-debug-toolbar==4.2.0 

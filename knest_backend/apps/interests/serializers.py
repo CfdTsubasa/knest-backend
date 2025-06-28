@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    Interest, UserInterest, Tag, UserTag,
+    Interest, UserInterest,
     InterestCategory, InterestSubcategory, InterestTag, UserInterestProfile
 )
 
@@ -28,61 +28,6 @@ class UserInterestSerializer(serializers.ModelSerializer):
             return value
         except Interest.DoesNotExist:
             raise serializers.ValidationError("指定された興味が見つかりません。") 
-
-class TagSerializer(serializers.ModelSerializer):
-    """ハッシュタグシリアライザー"""
-    class Meta:
-        model = Tag
-        fields = ['id', 'name', 'usage_count', 'created_at']
-        read_only_fields = ['id', 'created_at']
-
-class UserTagSerializer(serializers.ModelSerializer):
-    """ユーザーハッシュタグシリアライザー"""
-    tag = TagSerializer(read_only=True)
-    tag_name = serializers.CharField(write_only=True)
-    
-    class Meta:
-        model = UserTag
-        fields = ['id', 'tag', 'tag_name', 'added_at']
-        read_only_fields = ['id', 'added_at']
-    
-    def validate_tag_name(self, value):
-        """タグ名のバリデーション"""
-        # #を除去して正規化
-        value = value.strip().replace('#', '').lower()
-        
-        # 英数字、ひらがな、カタカナ、漢字のみ許可
-        import re
-        if not re.match(r'^[a-zA-Z0-9あ-んア-ン一-龯]+$', value):
-            raise serializers.ValidationError("タグには英数字と日本語のみ使用できます。")
-        
-        # 長さチェック
-        if len(value) < 2:
-            raise serializers.ValidationError("タグは2文字以上で入力してください。")
-        
-        return value
-    
-    def create(self, validated_data):
-        """ユーザータグの作成"""
-        tag_name = validated_data.pop('tag_name')
-        
-        # タグを取得または作成
-        tag, created = Tag.objects.get_or_create(
-            name=tag_name,
-            defaults={'usage_count': 0}
-        )
-        
-        # 使用回数を増加
-        tag.usage_count += 1
-        tag.save()
-        
-        # ユーザータグを作成
-        user_tag = UserTag.objects.create(
-            tag=tag,
-            **validated_data
-        )
-        
-        return user_tag 
 
 # ======================================
 # 新しい3階層興味関心システム用シリアライザー
@@ -152,7 +97,7 @@ class HierarchicalInterestTreeSerializer(serializers.ModelSerializer):
                 'name': tag.name,
                 'description': tag.description,
                 'usage_count': tag.usage_count
-            } for tag in sub.tags.all()]
+            } for tag in sub.interest_tags.all()]
         } for sub in subcategories]
 
 

@@ -41,7 +41,6 @@ class Circle(models.Model):
     icon_url = models.URLField(_('アイコンURL'), max_length=500, blank=True, null=True)
     cover_url = models.URLField(_('カバー画像URL'), max_length=500, blank=True, null=True)
     categories = models.ManyToManyField(Category, related_name='circles', verbose_name=_('カテゴリー'))
-    tags = models.JSONField(_('タグ'), default=list, blank=True)
     
     # 統計情報
     member_count = models.PositiveIntegerField(_('メンバー数'), default=0)

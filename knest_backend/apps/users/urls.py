@@ -6,7 +6,8 @@ from .views import (
     UserProfileView,
     PasswordChangeView,
     PasswordResetRequestView,
-    PasswordResetConfirmView
+    PasswordResetConfirmView,
+    TestUserCreationView
 )
 
 app_name = 'users'
@@ -16,6 +17,7 @@ urlpatterns = [
     path('auth/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('auth/register/', UserRegistrationView.as_view(), name='register'),
+    path('auth/test-user/', TestUserCreationView.as_view(), name='test_user'),
     
     # プロフィール
     path('me/', UserProfileView.as_view(), name='profile'),
