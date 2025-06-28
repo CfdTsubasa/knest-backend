@@ -145,4 +145,52 @@ class PasswordResetConfirmView(generics.GenericAPIView):
             return Response(
                 {"token": "無効または期限切れのトークンです。"},
                 status=status.HTTP_400_BAD_REQUEST
+            )
+
+class TestUserLoginView(generics.CreateAPIView):
+    permission_classes = (AllowAny,)
+
+    def create(self, request, *args, **kwargs):
+        try:
+            # テストユーザーを取得または作成
+            test_user, created = User.objects.get_or_create(
+                username='testuser',
+                defaults={
+                    'email': 'test@example.com',
+                    'display_name': 'テストユーザー',
+                    'is_active': True
+                }
+            )
+            
+            if created:
+                test_user.set_password('testpass123')
+                test_user.save()
+            
+            # JWTトークンを生成
+            from rest_framework_simplejwt.tokens import RefreshToken
+            refresh = RefreshToken.for_user(test_user)
+            
+            return Response({
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+                'user': {
+                    'id': str(test_user.id),
+                    'username': test_user.username,
+                    'email': test_user.email,
+                    'display_name': test_user.display_name,
+                    'avatar_url': test_user.avatar_url or '',
+                    'bio': test_user.bio or '',
+                    'emotion_state': test_user.emotion_state or '',
+                    'is_premium': test_user.is_premium,
+                    'last_active': test_user.last_active.isoformat(),
+                    'created_at': test_user.created_at.isoformat(),
+                    'updated_at': test_user.updated_at.isoformat()
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error in test user login: {str(e)}")
+            return Response(
+                {"error": "テストユーザーログインに失敗しました"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             ) 
