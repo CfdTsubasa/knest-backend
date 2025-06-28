@@ -186,4 +186,35 @@ class CircleMatchSerializer(serializers.Serializer):
     # circle = CircleSerializer()
     score = MatchingScoreSerializer()
     member_count = serializers.IntegerField()
-    match_reason = serializers.CharField() 
+    match_reason = serializers.CharField()
+
+
+class CreateUserInterestProfileCategoryRequestSerializer(serializers.Serializer):
+    """カテゴリレベルの興味関心追加リクエストシリアライザー"""
+    category_id = serializers.UUIDField()
+    level = serializers.IntegerField(default=1)
+    
+    def validate_category_id(self, value):
+        """カテゴリIDのバリデーション"""
+        try:
+            InterestCategory.objects.get(id=value)
+            return value
+        except InterestCategory.DoesNotExist:
+            raise serializers.ValidationError("指定されたカテゴリが見つかりません。") 
+
+class CreateUserInterestProfileSubcategoryRequestSerializer(serializers.Serializer):
+    """サブカテゴリレベルの興味関心追加リクエストシリアライザー"""
+    category_id = serializers.UUIDField()
+    subcategory_id = serializers.UUIDField()
+    level = serializers.IntegerField(default=2)
+    
+    def validate(self, data):
+        """カテゴリIDとサブカテゴリIDのバリデーション"""
+        try:
+            category = InterestCategory.objects.get(id=data['category_id'])
+            subcategory = InterestSubcategory.objects.get(id=data['subcategory_id'], category=category)
+            return data
+        except InterestCategory.DoesNotExist:
+            raise serializers.ValidationError("指定されたカテゴリが見つかりません。")
+        except InterestSubcategory.DoesNotExist:
+            raise serializers.ValidationError("指定されたサブカテゴリが見つかりません。") 

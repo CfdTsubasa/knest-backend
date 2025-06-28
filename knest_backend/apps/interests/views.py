@@ -16,7 +16,8 @@ from .serializers import (
     InterestSerializer, UserInterestSerializer, TagSerializer, UserTagSerializer,
     InterestCategorySerializer, InterestSubcategorySerializer, InterestTagSerializer,
     UserInterestProfileSerializer, HierarchicalInterestTreeSerializer,
-    UserMatchSerializer, CircleMatchSerializer
+    UserMatchSerializer, CircleMatchSerializer, CreateUserInterestProfileCategoryRequestSerializer,
+    CreateUserInterestProfileSubcategoryRequestSerializer
 )
 from ..users.models import User
 from ..circles.models import Circle
@@ -203,13 +204,10 @@ class UserInterestProfileViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def add_category_level(self, request):
         """カテゴリレベルで興味関心を追加"""
-        category_id = request.data.get('category_id')
+        serializer = CreateUserInterestProfileCategoryRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         
-        if not category_id:
-            return Response(
-                {'error': 'category_idが必要です'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        category_id = serializer.validated_data['category_id']
         
         try:
             category = InterestCategory.objects.get(id=category_id)
@@ -245,14 +243,11 @@ class UserInterestProfileViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def add_subcategory_level(self, request):
         """サブカテゴリレベルで興味関心を追加"""
-        category_id = request.data.get('category_id')
-        subcategory_id = request.data.get('subcategory_id')
+        serializer = CreateUserInterestProfileSubcategoryRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         
-        if not category_id or not subcategory_id:
-            return Response(
-                {'error': 'category_idとsubcategory_idが必要です'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        category_id = serializer.validated_data['category_id']
+        subcategory_id = serializer.validated_data['subcategory_id']
         
         try:
             category = InterestCategory.objects.get(id=category_id)
