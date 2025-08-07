@@ -1,22 +1,42 @@
 from django_filters import rest_framework as filters
-from .models import Interest, UserInterest
+from .models import InterestCategory, InterestSubcategory, InterestTag, UserInterestProfile
 
-class InterestFilter(filters.FilterSet):
+class InterestCategoryFilter(filters.FilterSet):
     name = filters.CharFilter(lookup_expr='icontains')
-    description = filters.CharFilter(lookup_expr='icontains')
+    type = filters.CharFilter(lookup_expr='exact')
     created_at = filters.DateTimeFromToRangeFilter()
+
+    class Meta:
+        model = InterestCategory
+        fields = ['name', 'type', 'created_at']
+
+class InterestSubcategoryFilter(filters.FilterSet):
+    name = filters.CharFilter(lookup_expr='icontains')
+    category = filters.UUIDFilter(field_name='category__id')
+    created_at = filters.DateTimeFromToRangeFilter()
+
+    class Meta:
+        model = InterestSubcategory
+        fields = ['name', 'category', 'created_at']
+
+class InterestTagFilter(filters.FilterSet):
+    name = filters.CharFilter(lookup_expr='icontains')
+    subcategory = filters.UUIDFilter(field_name='subcategory__id')
+    category = filters.UUIDFilter(field_name='subcategory__category__id')
     min_usage_count = filters.NumberFilter(field_name='usage_count', lookup_expr='gte')
-    max_usage_count = filters.NumberFilter(field_name='usage_count', lookup_expr='lte')
-
-    class Meta:
-        model = Interest
-        fields = ['name', 'description', 'is_official', 'created_at']
-
-class UserInterestFilter(filters.FilterSet):
-    interest_name = filters.CharFilter(field_name='interest__name', lookup_expr='icontains')
-    level = filters.RangeFilter()
     created_at = filters.DateTimeFromToRangeFilter()
 
     class Meta:
-        model = UserInterest
-        fields = ['interest', 'level', 'created_at'] 
+        model = InterestTag
+        fields = ['name', 'subcategory', 'category', 'usage_count', 'created_at']
+
+class UserInterestProfileFilter(filters.FilterSet):
+    category = filters.UUIDFilter(field_name='category__id')
+    subcategory = filters.UUIDFilter(field_name='subcategory__id')
+    tag = filters.UUIDFilter(field_name='tag__id')
+    level = filters.NumberFilter()
+    created_at = filters.DateTimeFromToRangeFilter()
+
+    class Meta:
+        model = UserInterestProfile
+        fields = ['category', 'subcategory', 'tag', 'level', 'created_at'] 

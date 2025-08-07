@@ -57,10 +57,12 @@ class UserRegistrationView(generics.CreateAPIView):
                 'avatar_url': user.avatar_url or '',
                 'bio': user.bio or '',
                 'emotion_state': user.emotion_state or '',
+                'birth_date': user.birth_date.isoformat() if user.birth_date else None,
+                'prefecture': user.prefecture,
                 'is_premium': user.is_premium,
-                'last_active': user.last_active.isoformat(),
-                'created_at': user.created_at.isoformat(),
-                'updated_at': user.updated_at.isoformat()
+                'last_active': user.last_active.isoformat() if user.last_active else None,
+                'created_at': user.created_at.isoformat() if user.created_at else None,
+                'updated_at': user.updated_at.isoformat() if user.updated_at else None
             }
         }, status=status.HTTP_201_CREATED)
 

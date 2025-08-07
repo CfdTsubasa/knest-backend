@@ -73,9 +73,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             'prefecture': self.user.prefecture,
             'age': self.user.age,
             'is_premium': self.user.is_premium,
-            'last_active': self.user.last_active.isoformat(),
-            'created_at': self.user.created_at.isoformat(),
-            'updated_at': self.user.updated_at.isoformat()
+            'last_active': self.user.last_active.isoformat() if self.user.last_active else None,
+            'created_at': self.user.created_at.isoformat() if self.user.created_at else None,
+            'updated_at': self.user.updated_at.isoformat() if self.user.updated_at else None
         }
         return data
 
@@ -103,8 +103,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('id', 'username', 'email', 'display_name', 'avatar_url', 'bio', 
-                 'emotion_state', 'birth_date', 'prefecture', 'age', 'is_premium', 'last_active', 'created_at')
-        read_only_fields = ('id', 'username', 'age', 'is_premium', 'last_active', 'created_at')
+                 'emotion_state', 'birth_date', 'prefecture', 'age', 'is_premium', 'last_active', 'created_at', 'updated_at')
+        read_only_fields = ('id', 'username', 'age', 'is_premium', 'last_active', 'created_at', 'updated_at')
 
 class PasswordChangeSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)

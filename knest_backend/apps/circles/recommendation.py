@@ -4,7 +4,7 @@
 from django.db import models
 from django.db.models import Count, Q, Avg, F
 from .models import Circle
-from ..interests.models import UserInterest
+from ..interests.models import UserInterestProfile, InterestTag
 from ..users.models import User
 import math
 import random
@@ -17,7 +17,7 @@ class CircleRecommendationEngine:
     
     def __init__(self, user):
         self.user = user
-        self.user_interests = UserInterest.objects.filter(user=user)
+        self.user_interests = UserInterestProfile.objects.filter(user=user)
     
     def get_recommendations(self, algorithm='hybrid', limit=10):
         """推薦サークルを取得"""
@@ -44,7 +44,7 @@ class CircleRecommendationEngine:
             random.shuffle(circles)
             return circles[:limit]
         
-        user_interest_ids = self.user_interests.values_list('interest_id', flat=True)
+        user_interest_ids = self.user_interests.values_list('tag_id', flat=True)
         
         circles = Circle.objects.filter(
             status='open',
@@ -81,7 +81,7 @@ class CircleRecommendationEngine:
     def _weighted_scoring(self, limit):
         """重み付けスコアリング（ランダム性とexploration追加）"""
         circles_scores = []
-        user_interest_ids = set(self.user_interests.values_list('interest_id', flat=True))
+        user_interest_ids = set(self.user_interests.values_list('tag_id', flat=True))
         
         circles = Circle.objects.filter(status='open').exclude(
             memberships__user=self.user,
@@ -198,101 +198,88 @@ class CircleRecommendationEngine:
         if not self.user_interests.exists():
             return User.objects.none()
         
-        user_interest_ids = set(self.user_interests.values_list('interest_id', flat=True))
+        # ユーザーの興味関心タグを取得
+        user_tags = set(self.user_interests.values_list('tag_id', flat=True))
         
-        # 共通の興味関心を持つユーザーを検索
+        # 類似ユーザーを見つける
         similar_users = User.objects.filter(
-            userinterest__interest_id__in=user_interest_ids
+            userinterestprofile__tag_id__in=user_tags
         ).exclude(
             id=self.user.id
         ).annotate(
-            common_interests=Count('userinterest__interest', filter=Q(
-                userinterest__interest_id__in=user_interest_ids
+            matching_tags=Count('userinterestprofile__tag', filter=Q(
+                userinterestprofile__tag_id__in=user_tags
             ))
         ).filter(
-            common_interests__gte=2  # 最低2つの共通興味関心
-        ).order_by('-common_interests')[:limit]
+            matching_tags__gt=0
+        ).order_by('-matching_tags')[:limit]
         
         return similar_users
-    
+
     def _hybrid_approach(self, limit):
-        """ハイブリッドアプローチ（ランダム性と多様性追加）"""
-        # 各アルゴリズムの結果を組み合わせ（動的な重み付け）
-        simple_weight = random.uniform(0.2, 0.4)    # 20-40%
-        weighted_weight = random.uniform(0.3, 0.5)  # 30-50%
-        collab_weight = 1.0 - simple_weight - weighted_weight  # 残り
+        """ハイブリッドアプローチ（複数手法の組み合わせ）"""
+        # 各手法の重み付け
+        weights = {
+            'simple': 0.3,
+            'weighted': 0.4,
+            'collaborative': 0.3
+        }
         
-        simple_count = max(1, int(limit * simple_weight))
-        weighted_count = max(1, int(limit * weighted_weight))
-        collab_count = max(1, int(limit * collab_weight))
+        # 各手法で推薦を取得
+        simple_recs = self._simple_matching(limit * 2)
+        weighted_recs = self._weighted_scoring(limit * 2)
+        collab_recs = self._collaborative_filtering(limit * 2)
         
-        simple_results = list(self._simple_matching(simple_count * 2))
-        weighted_results = list(self._weighted_scoring(weighted_count * 2))
-        collab_results = list(self._collaborative_filtering(collab_count * 2))
+        # スコアを集計
+        circle_scores = defaultdict(float)
         
-        # 重複を除去しつつ結合（順序をランダマイズ）
-        seen_ids = set()
-        final_results = []
+        for circle in simple_recs:
+            circle_scores[circle] += weights['simple']
         
-        # ランダムにアルゴリズムの優先順位を決定
-        algorithms = [
-            ('weighted', weighted_results),
-            ('collaborative', collab_results),
-            ('simple', simple_results)
-        ]
-        random.shuffle(algorithms)  # 毎回異なる優先順位
+        for circle in weighted_recs:
+            circle_scores[circle] += weights['weighted']
         
-        # 各アルゴリズムから交互に選択
-        max_iterations = limit * 2
-        iteration = 0
+        for circle in collab_recs:
+            circle_scores[circle] += weights['collaborative']
         
-        while len(final_results) < limit and iteration < max_iterations:
-            for name, results in algorithms:
-                if len(final_results) >= limit:
-                    break
-                
-                # 各アルゴリズムから1-2個をランダム選択
-                available_circles = [c for c in results if c.id not in seen_ids]
-                if available_circles:
-                    # ランダムに1-2個選択
-                    selection_count = random.randint(1, min(2, len(available_circles), limit - len(final_results)))
-                    selected = random.sample(available_circles, selection_count)
-                    
-                    for circle in selected:
-                        if circle.id not in seen_ids:
-                            final_results.append(circle)
-                            seen_ids.add(circle.id)
-            
-            iteration += 1
+        # スコア順にソート
+        sorted_circles = sorted(
+            circle_scores.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
         
-        # 最終結果もシャッフル
-        if len(final_results) > limit // 2:
-            # 上位半分は維持、下位半分はシャッフル
-            top_half = final_results[:limit // 2]
-            bottom_half = final_results[limit // 2:]
-            random.shuffle(bottom_half)
-            final_results = top_half + bottom_half
+        # 最終的な推薦リストを作成
+        final_recommendations = []
+        seen_circles = set()
         
-        return final_results[:limit]
+        for circle, _ in sorted_circles:
+            if circle.id not in seen_circles and len(final_recommendations) < limit:
+                final_recommendations.append(circle)
+                seen_circles.add(circle.id)
+        
+        return final_recommendations
 
 
 def get_personalized_recommendations(user, algorithm='hybrid', limit=10):
-    """ユーザー向けのパーソナライズド推薦を取得"""
+    """ユーザーに合わせた推薦サークルを取得"""
     engine = CircleRecommendationEngine(user)
-    return engine.get_recommendations(algorithm=algorithm, limit=limit)
+    return engine.get_recommendations(algorithm, limit)
 
 
 def get_trending_circles(limit=10):
-    """トレンドサークルを取得"""
-    from datetime import datetime, timedelta
+    """トレンドのサークルを取得"""
+    # 最近のアクティビティを考慮してトレンドを計算
+    recent_date = datetime.now() - timedelta(days=30)
     
-    # 過去7日間の活動を基にトレンドを計算
-    week_ago = datetime.now() - timedelta(days=7)
-    
-    trending = Circle.objects.filter(
+    trending_circles = Circle.objects.filter(
         status='open'
     ).annotate(
-        recent_activity=Count('posts', filter=Q(posts__created_at__gte=week_ago))
-    ).order_by('-recent_activity', '-member_count')[:limit]
+        recent_posts=Count('posts', filter=Q(posts__created_at__gte=recent_date)),
+        recent_members=Count('memberships', filter=Q(
+            memberships__joined_at__gte=recent_date,
+            memberships__status='active'
+        ))
+    ).order_by('-recent_posts', '-recent_members', '-member_count')[:limit]
     
-    return trending 
+    return trending_circles 

@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
-from .models import Category, Circle, CircleMembership, CirclePost, CircleEvent, CircleChat, CircleSearchHistory, CircleChatRead
+from .models import Category, Circle, CircleMembership, CirclePost, CircleEvent, CircleChat, CircleSearchHistory, CircleChatRead, CircleInterest
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
@@ -14,7 +14,7 @@ class CircleAdmin(admin.ModelAdmin):
     list_filter = ('status', 'circle_type', 'is_premium', 'created_at')
     search_fields = ('name', 'description', 'owner__username')
     readonly_fields = ('id', 'member_count', 'post_count', 'last_activity', 'created_at', 'updated_at')
-    filter_horizontal = ('categories', 'interests')
+    filter_horizontal = ('categories',)
     
     fieldsets = (
         ('基本情報', {
@@ -24,7 +24,7 @@ class CircleAdmin(admin.ModelAdmin):
             'fields': ('status', 'circle_type', 'is_premium', 'member_limit', 'is_private')
         }),
         ('カテゴリー・興味', {
-            'fields': ('categories', 'interests', 'tags')
+            'fields': ('categories', 'tags')
         }),
         ('画像', {
             'fields': ('icon_url', 'cover_url')
@@ -110,4 +110,11 @@ class CircleChatReadAdmin(admin.ModelAdmin):
     list_display = ('user', 'circle', 'last_read')
     list_filter = ('last_read',)
     search_fields = ('user__username', 'circle__name')
-    readonly_fields = ('id', 'last_read') 
+    readonly_fields = ('id', 'last_read')
+
+@admin.register(CircleInterest)
+class CircleInterestAdmin(admin.ModelAdmin):
+    list_display = ('circle', 'interest', 'relevance_score', 'added_at')
+    list_filter = ('added_at',)
+    search_fields = ('circle__name', 'interest__name')
+    readonly_fields = ('id', 'added_at') 

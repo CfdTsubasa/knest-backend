@@ -1,6 +1,7 @@
 from django_filters import rest_framework as filters
 from .models import Circle
 from django.db.models import Count
+from knest_backend.apps.interests.models import InterestTag
 
 class CircleFilter(filters.FilterSet):
     """サークル検索用のフィルター"""
@@ -11,7 +12,7 @@ class CircleFilter(filters.FilterSet):
     interests = filters.ModelMultipleChoiceFilter(
         field_name='interests__id',
         to_field_name='id',
-        queryset=lambda request: request.interests.all()
+        queryset=InterestTag.objects.all()
     )
     member_count = filters.RangeFilter(
         field_name='memberships',

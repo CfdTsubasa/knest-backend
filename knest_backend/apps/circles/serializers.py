@@ -2,13 +2,13 @@ from rest_framework import serializers
 from django.utils.translation import gettext_lazy as _
 from .models import Circle, CircleInterest, CircleRecommendation, CircleMembership, Category, CirclePost, CircleEvent, CircleChat, CircleChatRead
 from knest_backend.apps.users.serializers import UserSerializer
-from knest_backend.apps.interests.serializers import InterestSerializer
+from knest_backend.apps.interests.serializers import InterestTagSerializer
 
 class CircleInterestSerializer(serializers.ModelSerializer):
     """
     サークルと興味の関連のシリアライザー
     """
-    interest = InterestSerializer(read_only=True)
+    interest = InterestTagSerializer(read_only=True)
     interest_id = serializers.UUIDField(write_only=True)
 
     class Meta:
@@ -40,7 +40,7 @@ class CircleSerializer(serializers.ModelSerializer):
     サークルのシリアライザー
     """
     owner = UserSerializer(read_only=True)
-    interests = InterestSerializer(many=True, read_only=True)
+    interests = InterestTagSerializer(many=True, read_only=True)
     member_count = serializers.SerializerMethodField()
     is_member = serializers.SerializerMethodField()
     membership_status = serializers.SerializerMethodField()

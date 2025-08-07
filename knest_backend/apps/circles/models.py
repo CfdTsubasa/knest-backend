@@ -4,6 +4,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone
+from knest_backend.apps.interests.models import InterestTag
 
 class Category(models.Model):
     """サークルのカテゴリーモデル"""
@@ -81,7 +82,8 @@ class Circle(models.Model):
         verbose_name=_('オーナー')
     )
     interests = models.ManyToManyField(
-        'interests.Interest',
+        'interests.InterestTag',
+        through='CircleInterest',
         related_name='circles',
         verbose_name=_('興味・関心')
     )
@@ -115,7 +117,7 @@ class CircleInterest(models.Model):
         verbose_name=_('サークル')
     )
     interest = models.ForeignKey(
-        'interests.Interest',
+        'interests.InterestTag',
         on_delete=models.CASCADE,
         related_name='circle_interests',
         verbose_name=_('興味')
